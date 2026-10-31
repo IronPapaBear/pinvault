@@ -70,7 +70,16 @@ export const SERIES = [
    "Goofy Holidays",
    "Donald Duck Holidays"
   ],
-  "boards": []
+  "boards": [
+   {
+    "label": "Disneyland",
+    "url": "https://cdn.shopify.com/s/files/1/0801/2103/6985/files/2025-01-IMG_3271-1200x1553.jpg?v=1785355948"
+   },
+   {
+    "label": "Walt Disney World",
+    "url": "https://cdn.shopify.com/s/files/1/0801/2103/6985/files/2025-01-IMG_3272.jpg?v=1785355948"
+   }
+  ]
  },
  {
   "key": "2025-B",
@@ -148,7 +157,12 @@ export const SERIES = [
   "title": "Cast Hidden Disney 2020 Series 1",
   "url": "https://disneypinsblog.com/blogs/news/cast-hidden-disney-pins-2020-series-1",
   "themes": [],
-  "boards": []
+  "boards": [
+   {
+    "label": "Disneyland",
+    "url": "https://disneypinsblog.com/cdn/shop/articles/2020-09-Disneyland-Cast-Hidden-Disney-Pins-2020-Series1_27847d00-6ff0-47fc-b842-6d227fc87278.jpg?v=1790136156"
+   }
+  ]
  },
  {
   "key": "2019-A",
@@ -205,7 +219,20 @@ export const SERIES = [
   "title": "Hidden Mickey 2019 Wave C",
   "url": "https://disneypinsblog.com/blogs/news/disney-hidden-mickey-pins-2019-wave-c",
   "themes": [],
-  "boards": []
+  "boards": [
+   {
+    "label": "Disneyland",
+    "url": "https://cdn.shopify.com/s/files/1/0801/2103/6985/files/2019-08-Disneyland-Hidden-Mickey-Pins-2019-Wave-C.jpg?v=1785355424"
+   },
+   {
+    "label": "Walt Disney World",
+    "url": "https://cdn.shopify.com/s/files/1/0801/2103/6985/files/2019-08-Walt-Disney-World-Hidden-Mickey-Pins-2019-Wave-C.jpg?v=1785355435"
+   },
+   {
+    "label": "Shared",
+    "url": "https://cdn.shopify.com/s/files/1/0801/2103/6985/files/2019-08-Shared-Disney-Hidden-Mickey-Pins-2019-Wave-C.jpg?v=1785355431"
+   }
+  ]
  },
  {
   "key": "2018-A",
@@ -228,7 +255,12 @@ export const SERIES = [
   "title": "Hidden Mickey 2018 Wave B",
   "url": "https://disneypinsblog.com/blogs/news/disney-hidden-mickey-pins-2018-wave-b",
   "themes": [],
-  "boards": []
+  "boards": [
+   {
+    "label": "Shared",
+    "url": "https://disneypinsblog.com/cdn/shop/articles/2018-09-Disney-Hidden-Mickey-Pins-2018-Wave-B-Shared-2_b9fe8b75-591c-4438-9751-4f0be27135e1.jpg?v=1790135808"
+   }
+  ]
  },
  {
   "key": "2016-17",
