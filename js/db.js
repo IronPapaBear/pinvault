@@ -23,9 +23,37 @@ function openDB() {
   });
 }
 
-function tx(storeName, mode, fn) {
+// iPhones close the database connection when the app sits in the background,
+// so reopen it whenever it's gone and retry the operation once.
+let opening = null;
+async function connection(force = false) {
+  if (idb && !force) return idb;
+  if (!opening) {
+    opening = openDB().then((d) => {
+      d.onclose = () => { if (idb === d) idb = null; };
+      d.onversionchange = () => { d.close(); if (idb === d) idb = null; };
+      idb = d;
+      return d;
+    }).finally(() => { opening = null; });
+  }
+  return opening;
+}
+
+async function tx(storeName, mode, fn) {
+  try {
+    return await txOnce(await connection(), storeName, mode, fn);
+  } catch (e) {
+    if (e && (e.name === 'InvalidStateError' || /clos/i.test(e.message || ''))) {
+      idb = null;
+      return txOnce(await connection(true), storeName, mode, fn);
+    }
+    throw e;
+  }
+}
+
+function txOnce(db, storeName, mode, fn) {
   return new Promise((resolve, reject) => {
-    const t = idb.transaction(storeName, mode);
+    const t = db.transaction(storeName, mode);
     const store = t.objectStore(storeName);
     let result;
     const r = fn(store);
@@ -60,7 +88,7 @@ export function changed() {
 }
 
 export async function init() {
-  idb = await openDB();
+  await connection();
   for (const name of STORES) {
     const rows = await getAll(name);
     const map = state[name];
@@ -136,7 +164,8 @@ export async function addRef(slotId, { blob, basic, ml = null, user = false }) {
 }
 
 export async function eraseEverything() {
-  idb.close();
+  if (idb) idb.close();
+  idb = null;
   await new Promise((res) => { const r = indexedDB.deleteDatabase(DB_NAME); r.onsuccess = r.onerror = r.onblocked = () => res(); });
 }
 

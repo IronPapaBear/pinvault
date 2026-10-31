@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js?v=202610311008';
-import { state } from './db.js?v=202610311008';
-import { SERIES } from './seed.js?v=202610311008';
-import * as V from './vision.js?v=202610311008';
+import * as db from './db.js?v=202610311127';
+import { state } from './db.js?v=202610311127';
+import { SERIES } from './seed.js?v=202610311127';
+import * as V from './vision.js?v=202610311127';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -151,15 +151,55 @@ export function parseLabel(raw) {
     kind = /super/i.test(m[1]) ? 'superChaser' : /chaser/i.test(m[1]) ? 'chaser' : 'completer';
     t = m[2].trim();
   }
+  t = dropJunkEnds(t);
   const letters = (t.match(/[A-Za-z]/g) || []).length;
   return { name: letters >= 2 ? t : '', kind };
 }
 
+// Labels are printed in capitals, so a stray lowercase or one-letter scrap at either end is noise.
+function dropJunkEnds(t) {
+  const words = t.split(' ').filter(Boolean);
+  const caps = words.filter((w) => /[A-Z]/.test(w) && !/[a-z]/.test(w)).length >= words.length / 2;
+  const junk = (w) => /^[^A-Za-z0-9]*[A-Za-z]?[^A-Za-z0-9]*$/.test(w) && w !== '&' || (caps && /[a-z]/.test(w) && w.length <= 3);
+  while (words.length > 1 && junk(words[words.length - 1])) words.pop();
+  while (words.length > 1 && caps && /[a-z]/.test(words[0]) && words[0].length <= 3) words.shift();
+  return words.join(' ');
+}
+
 export function parseSectionTitle(raw) {
   const t = String(raw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const m = t.match(/series\s*[0-9IlO]+\s*[:;.]?\s*(.+)$/i);
-  const title = (m ? m[1] : t).replace(/[^A-Za-z0-9&'’ \-:]/g, '').trim();
-  return (title.match(/[A-Za-z]/g) || []).length >= 3 ? titleCase(title) : '';
+  const m = t.match(/(series|set)\s*([0-9IlO]+)\s*[:;.]?\s*(.+)$/i);
+  let name = (m ? m[3] : t).replace(/[^A-Za-z0-9&'’ \-]/g, ' ').replace(/\s+/g, ' ').trim();
+  // drop scraps of the tab's edge read as short words at the end ("Rd", "y")
+  const words = name.split(' ');
+  while (words.length > 1 && words[words.length - 1].length <= 2 && words[words.length - 1] !== '&') words.pop();
+  name = words.join(' ');
+  if ((name.match(/[A-Za-z]/g) || []).length < 3) return '';
+  name = titleCase(name);
+  if (!m) return name;
+  const num = m[2].replace(/[IlO]/g, (c) => (c === 'O' ? '0' : '1'));
+  return `${/set/i.test(m[1]) ? 'Set' : 'Series'} ${num}: ${name}`;
+}
+
+/** Tidies names and themes read by older versions (stray letters around them). */
+export async function tidyReadNames() {
+  if (db.getMeta('tidy1')) return;
+  const fixTheme = (g) => (g && /(series|set)\s*[0-9IlO]+/i.test(g) ? parseSectionTitle(g) || g : g);
+  for (const s of db.allSlots()) {
+    if (!s.autoNamed || s.edited) continue;
+    const changes = {};
+    const n = dropJunkEnds(s.name || '');
+    if (n && n !== s.name) changes.name = n;
+    const g = fixTheme(s.group);
+    if (g !== s.group) changes.group = g;
+    if (Object.keys(changes).length) await db.updateSlot(s, changes, { markEdited: false });
+  }
+  for (const series of db.seriesList()) {
+    if (!series.themes) continue;
+    const themes = [...new Set(series.themes.map(fixTheme))];
+    if (themes.join('|') !== series.themes.join('|')) { series.themes = themes; await db.put('series', series); }
+  }
+  await db.setMeta('tidy1', true);
 }
 
 /** Reads pin names, chaser labels and series titles from checklist boards (text recognition, optional). */
@@ -167,7 +207,7 @@ export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
   const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
   if (!todo.length) return;
-  const OCR = await import('./ocr.js?v=202610311008');
+  const OCR = await import('./ocr.js?v=202610311127');
   setStatus({ running: true, phase: 'Loading the name reader', done: 0, total: 1 });
   const ok = await OCR.ready();
   setStatus({ running: false, phase: '' });

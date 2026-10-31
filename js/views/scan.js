@@ -1,13 +1,13 @@
 // Add Pins and Trade Board tabs: photograph pins, see what they are, what you need.
-import * as db from '../db.js?v=202610311008';
-import * as C from '../catalog.js?v=202610311008';
-import * as V from '../vision.js?v=202610311008';
-import { annotator } from '../annotator.js?v=202610311008';
-import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js?v=202610311008';
-import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js?v=202610311008';
-import { catalogBanner } from './collection.js?v=202610311008';
-import { openLive } from './live.js?v=202610311008';
-import { state } from '../db.js?v=202610311008';
+import * as db from '../db.js?v=202610311127';
+import * as C from '../catalog.js?v=202610311127';
+import * as V from '../vision.js?v=202610311127';
+import { annotator } from '../annotator.js?v=202610311127';
+import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js?v=202610311127';
+import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js?v=202610311127';
+import { catalogBanner } from './collection.js?v=202610311127';
+import { openLive } from './live.js?v=202610311127';
+import { state } from '../db.js?v=202610311127';
 
 let nextId = 1;
 const rerender = () => window.dispatchEvent(new Event('hashchange'));
