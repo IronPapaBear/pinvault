@@ -128,8 +128,16 @@ export function openSheet({ title = '', build, onClose, tall = true }) {
   root.append(wrap);
   sheetStack.push(api);
   requestAnimationFrame(() => wrap.classList.add('open'));
-  const content = build(api);
-  if (content) body.append(content);
+  try {
+    const content = build(api);
+    if (content) body.append(content);
+  } catch (e) {
+    console.error(e);
+    body.append(h('div', { class: 'pad stack' },
+      h('div', { class: 'bold txt-orange' }, 'Something went wrong here'),
+      h('div', { class: 'small mono' }, String(e && (e.stack || e.message) || e).slice(0, 600)),
+      h('div', { class: 'small muted' }, 'Please send a screenshot of this to get it fixed.')));
+  }
   return api;
 }
 
