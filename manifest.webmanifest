@@ -1,0 +1,16 @@
+{
+  "name": "PinVault",
+  "short_name": "PinVault",
+  "description": "Track your Hidden Disney pins, see what you need, and scan trade boards.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d1450",
+  "theme_color": "#2b1d6e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
