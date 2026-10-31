@@ -66,6 +66,39 @@ function txOnce(db, storeName, mode, fn) {
 
 const getAll = (name) => tx(name, 'readonly', (s) => s.getAll());
 const putRaw = (name, obj) => tx(name, 'readwrite', (s) => s.put(obj));
+
+// Pictures are saved as raw bytes, not Blobs: on iPhone a Blob kept in the database can become
+// unreadable after the app is backgrounded, which blanked the set photos.
+const packed = new WeakMap(); // Blob -> {bytes, type}
+async function pack(obj) {
+  if (!(obj.blob instanceof Blob)) return obj;
+  let p = packed.get(obj.blob);
+  if (!p) { p = { bytes: await obj.blob.arrayBuffer(), type: obj.blob.type }; packed.set(obj.blob, p); }
+  const { blob, ...rest } = obj;
+  return { ...rest, blobBytes: p.bytes, blobType: p.type };
+}
+async function unpack(row) {
+  if (row.blobBytes) {
+    const { blobBytes, blobType, ...rest } = row;
+    const blob = new Blob([blobBytes], { type: blobType || 'image/jpeg' });
+    packed.set(blob, { bytes: blobBytes, type: blobType });
+    return { ...rest, blob };
+  }
+  if (row.blob instanceof Blob) {
+    // older saves: copy into memory now; if it can no longer be read, drop it (set photos re-download)
+    try {
+      const bytes = await row.blob.arrayBuffer();
+      if (!bytes.byteLength) throw new Error('empty');
+      row.blob = new Blob([bytes], { type: row.blob.type || 'image/jpeg' });
+      packed.set(row.blob, { bytes, type: row.blob.type });
+      row._repack = true;
+    } catch {
+      row.blob = null;
+      row._repack = true;
+    }
+  }
+  return row;
+}
 const delRaw = (name, key) => tx(name, 'readwrite', (s) => s.delete(key));
 
 // ---------- in-memory state ----------
@@ -92,7 +125,22 @@ export async function init() {
   for (const name of STORES) {
     const rows = await getAll(name);
     const map = state[name];
-    for (const row of rows) map.set(name === 'series' || name === 'meta' ? row.key : row.id, row);
+    for (const raw of rows) {
+      const row = await unpack(raw);
+      map.set(name === 'series' || name === 'meta' ? row.key : row.id, row);
+    }
+  }
+  // Re-save older pictures in the safer format; drop crops that were lost.
+  for (const name of ['boards', 'refs']) {
+    for (const row of [...state[name].values()]) {
+      if (!row._repack) continue;
+      delete row._repack;
+      try {
+        if (name === 'refs' && !row.blob) { await remove('refs', row.id); continue; }
+        if (name === 'boards' && !row.blob) row.autoScanned = false;
+        await put(name, row);
+      } catch (e) { console.warn('repack failed', e); }
+    }
   }
 }
 
@@ -103,7 +151,7 @@ export function uid() {
 // ---------- generic ----------
 
 export async function put(name, obj) {
-  const id = await putRaw(name, obj);
+  const id = await putRaw(name, await pack(obj));
   if (name === 'series' || name === 'meta') state[name].set(obj.key, obj);
   else { obj.id = id; state[name].set(id, obj); }
   changed();

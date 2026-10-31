@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js?v=202610311133';
-import { state } from './db.js?v=202610311133';
-import { SERIES } from './seed.js?v=202610311133';
-import * as V from './vision.js?v=202610311133';
+import * as db from './db.js?v=202610311136';
+import { state } from './db.js?v=202610311136';
+import { SERIES } from './seed.js?v=202610311136';
+import * as V from './vision.js?v=202610311136';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -91,9 +91,21 @@ export async function autoCatalog() {
   const boards = [...state.boards.values()].filter((b) => b.blob && (!b.autoScanned || needsRefs(b)));
   if (!boards.length) { await readNames(); return; }
   setStatus({ running: true, phase: 'Finding pins on board photos', done: 0, total: boards.length });
+  let unreadable = 0;
   for (const board of boards) {
     try {
-      const canvas = await V.blobToCanvas(board.blob, 2400);
+      let canvas;
+      try {
+        canvas = await V.blobToCanvas(board.blob, 2400);
+      } catch (e) {
+        // the saved picture is damaged: forget it so it downloads again
+        if (board.url) { board.blob = null; board.autoScanned = false; await db.put('boards', board); unreadable++; }
+        throw e;
+      }
+      if (board.rebox) {
+        for (const s of db.slotsOfBoard(board.id)) if (untouched(s)) await db.deleteSlot(s);
+        board.rebox = false;
+      }
       if (!board.autoScanned && !board.fromLayout) {
         const existing = db.slotsOfBoard(board.id).map((s) => s.rect);
         const fresh = (r) => !existing.some((e) => e && V.iou(e, r) > 0.3);
@@ -144,6 +156,11 @@ export async function autoCatalog() {
     await new Promise((r) => setTimeout(r, 0));
   }
   setStatus({ running: false, phase: '' });
+  if (unreadable && navigator.onLine !== false && !autoCatalog.retried) {
+    autoCatalog.retried = true;
+    const r = await downloadBoards();
+    if (r.ok) return autoCatalog();
+  }
   await readNames();
 }
 
@@ -217,7 +234,7 @@ export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
   const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && (!s.edited || !s.group));
   if (!todo.length) return;
-  const OCR = await import('./ocr.js?v=202610311133');
+  const OCR = await import('./ocr.js?v=202610311136');
   setStatus({ running: true, phase: 'Loading the name reader', done: 0, total: 1 });
   const ok = await OCR.ready();
   setStatus({ running: false, phase: '' });
@@ -299,7 +316,8 @@ const untouched = (s) => !s.edited && !s.owned && !db.refsOf(s.id).some((r) => r
 export async function resetAutoBoxes(run = true) {
   for (const board of state.boards.values()) {
     if (board.fromLayout) continue;
-    for (const s of db.slotsOfBoard(board.id)) if (untouched(s)) await db.deleteSlot(s);
+    // old boxes are cleared only once the photo has been read successfully (see autoCatalog)
+    board.rebox = true;
     board.autoScanned = false;
     await db.put('boards', board);
   }

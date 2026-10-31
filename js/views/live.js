@@ -1,8 +1,8 @@
 // Live scan: point the camera, boxes and NEED labels follow the pins.
-import * as C from '../catalog.js?v=202610311133';
-import * as V from '../vision.js?v=202610311133';
-import { state } from '../db.js?v=202610311133';
-import { set, h, icon, isChase } from '../ui.js?v=202610311133';
+import * as C from '../catalog.js?v=202610311136';
+import * as V from '../vision.js?v=202610311136';
+import { state } from '../db.js?v=202610311136';
+import { set, h, icon, isChase } from '../ui.js?v=202610311136';
 
 const COLORS = { need: '#ef4444', chaser: '#f97316', have: '#22c55e', unknown: 'rgba(255,255,255,.55)' };
 
