@@ -1,12 +1,12 @@
 // One set photo: box each pin (auto-detect or draw), tap a box to edit it.
-import * as db from '../db.js?v=202610310955';
-import { state } from '../db.js?v=202610310955';
-import * as C from '../catalog.js?v=202610310955';
-import * as V from '../vision.js?v=202610310955';
-import { annotator } from '../annotator.js?v=202610310955';
-import { h, icon, photoButton, toast, spinner, KINDS, isChase } from '../ui.js?v=202610310955';
-import { openPinSheet } from './sheets.js?v=202610310955';
-import { catalogBanner } from './collection.js?v=202610310955';
+import * as db from '../db.js?v=202610311000';
+import { state } from '../db.js?v=202610311000';
+import * as C from '../catalog.js?v=202610311000';
+import * as V from '../vision.js?v=202610311000';
+import { annotator } from '../annotator.js?v=202610311000';
+import { h, icon, photoButton, toast, spinner, KINDS, isChase } from '../ui.js?v=202610311000';
+import { openPinSheet } from './sheets.js?v=202610311000';
+import { catalogBanner } from './collection.js?v=202610311000';
 
 const boardPrefs = { group: '', kind: 'regular' };
 let busy = '';

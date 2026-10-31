@@ -1,10 +1,10 @@
 // Shared pop-up panels: edit a pin, split a box, add a pin from a photo, find a pin on a board.
-import * as db from '../db.js?v=202610310955';
-import { state } from '../db.js?v=202610310955';
-import * as C from '../catalog.js?v=202610310955';
-import * as V from '../vision.js?v=202610310955';
-import { annotator } from '../annotator.js?v=202610310955';
-import { set, h, icon, openSheet, confirmSheet, stepper, photoButton, toast, KINDS, kindBadge, segmented, spinner } from '../ui.js?v=202610310955';
+import * as db from '../db.js?v=202610311000';
+import { state } from '../db.js?v=202610311000';
+import * as C from '../catalog.js?v=202610311000';
+import * as V from '../vision.js?v=202610311000';
+import { annotator } from '../annotator.js?v=202610311000';
+import { set, h, icon, openSheet, confirmSheet, stepper, photoButton, toast, KINDS, kindBadge, segmented, spinner } from '../ui.js?v=202610311000';
 
 // ---------- edit a pin ----------
 

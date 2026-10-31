@@ -1,5 +1,5 @@
 // Image with boxes on top: zoom, tap a box, or switch to "Draw box" and drag around a pin.
-import { set, h, icon } from './ui.js?v=202610310955';
+import { set, h, icon } from './ui.js?v=202610311000';
 
 const memory = new Map(); // remembers zoom/draw per annotator key across re-renders
 

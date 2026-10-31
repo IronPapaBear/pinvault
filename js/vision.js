@@ -563,17 +563,18 @@ export function detectChecklist(src) {
   ctx.drawImage(src, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h).data;
   const n = w * h;
+  const { L, A, B } = toLab(d, n);
+  // Paper = white or very light grey/blue (cards and panels); everything else is "ink".
   const fg = new Uint8Array(n);
-  let white = 0;
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const r = d[p], g = d[p + 1], b = d[p + 2];
-    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-    const isWhite = mn > 222 && mx - mn < 28;
-    if (isWhite) white++; else fg[i] = 1;
+  let paper = 0;
+  for (let i = 0; i < n; i++) {
+    const chroma = Math.hypot(A[i], B[i]);
+    const light = L[i] > 86 && chroma < 14;
+    if (light) paper++; else fg[i] = 1;
   }
-  if (white / n < 0.38) return null; // not a white-background checklist
+  if (paper / n < 0.3) return null; // not a printed checklist
 
-  // Full-width colour bars mark the start of each series.
+  // Full-width coloured rows (series bars, or the gaps between series cards).
   const rowFrac = new Float32Array(h);
   for (let y = 0; y < h; y++) {
     let s = 0;
@@ -585,11 +586,21 @@ export function detectChecklist(src) {
     if (rowFrac[y] > 0.85) {
       let y1 = y;
       while (y1 + 1 < h && rowFrac[y1 + 1] > 0.85) y1++;
-      if (y1 - y + 1 >= Math.max(3, h * 0.008)) bars.push({ y0: y, y1 });
+      if (y1 - y + 1 >= Math.max(3, h * 0.006)) bars.push({ y0: y, y1 });
       y = y1;
     }
   }
   if (bars.length < 2) return null;
+  // The divider colour (median of the bar rows); pixels of that colour are tabs/edges, not pins.
+  const bl = [], ba = [], bb = [];
+  for (const bar of bars) for (let y = bar.y0; y <= bar.y1; y += 2) for (let x = 0; x < w; x += 4) {
+    const i = y * w + x; bl.push(L[i]); ba.push(A[i]); bb.push(B[i]);
+  }
+  const barCol = [median(bl), median(ba), median(bb)];
+  const isBarColour = (i) => {
+    const dl = L[i] - barCol[0], da = A[i] - barCol[1], db = B[i] - barCol[2];
+    return 0.5 * dl * dl + da * da + db * db < 22 * 22;
+  };
 
   const pins = [];
   const sections = [];
@@ -599,16 +610,35 @@ export function detectChecklist(src) {
     const bottom = s + 1 < bars.length ? bars[s + 1].y0 - 1 : Math.min(h - 1, footer);
     const sh = bottom - top + 1;
     if (sh < h * 0.04) continue;
-    sections.push({ rect: { x: 0, y: bars[s].y0 / h, w: 1, h: (bars[s].y1 - bars[s].y0 + 1) / h } });
+    // A series is printed on paper; skip logo headers and the like (mostly coloured).
+    let paperRows = 0;
+    for (let y = top; y <= bottom; y++) for (let x = 0; x < w; x += 3) paperRows += fg[y * w + x] ? 0 : 1;
+    if (paperRows / (sh * Math.ceil(w / 3)) < 0.35) continue;
+
+    // Title: a tab of the divider colour in the top-left of the section, else the bar above it.
+    let tx0 = w, ty0 = sh, tx1 = -1, ty1 = -1;
+    for (let y = 0; y < sh * 0.35; y++) for (let x = 0; x < w * 0.6; x++) {
+      const i = (top + y) * w + x;
+      if (fg[i] && isBarColour(i)) { if (x < tx0) tx0 = x; if (x > tx1) tx1 = x; if (y < ty0) ty0 = y; if (y > ty1) ty1 = y; }
+    }
+    const tab = tx1 - tx0 > w * 0.12 && ty1 - ty0 > sh * 0.05;
+    sections.push({ rect: tab
+      ? { x: tx0 / w, y: (top + ty0) / h, w: (tx1 - tx0 + 1) / w, h: (ty1 - ty0 + 1) / h }
+      : { x: 0, y: bars[s].y0 / h, w: 1, h: (bars[s].y1 - bars[s].y0 + 1) / h } });
     const secIndex = sections.length - 1;
 
-    // Section mask with small gaps closed, then blobs.
+    // Section mask (ink that isn't divider-coloured), small gaps closed, then blobs.
     let m = new Uint8Array(w * sh);
-    for (let y = 0; y < sh; y++) for (let x = 0; x < w; x++) m[y * w + x] = fg[(top + y) * w + x];
+    for (let y = 0; y < sh; y++) for (let x = 0; x < w; x++) {
+      const i = (top + y) * w + x;
+      m[y * w + x] = fg[i] && !isBarColour(i) ? 1 : 0;
+    }
     m = erode(dilate(m, w, sh, 2), w, sh, 2);
     const { comps } = components(m, w, sh);
     // Pin pieces are tall; letters of the names are short.
-    let parts = comps.filter((cc) => cc.y1 - cc.y0 + 1 >= sh * 0.2 && cc.area >= 30)
+    const solid = (cc) => cc.area / ((cc.x1 - cc.x0 + 1) * (cc.y1 - cc.y0 + 1)) > 0.16; // frames/outlines are mostly empty
+    const nearEdge = (cc) => (cc.x0 + cc.x1) / 2 < w * 0.04 || (cc.x0 + cc.x1) / 2 > w * 0.96;
+    let parts = comps.filter((cc) => cc.y1 - cc.y0 + 1 >= sh * 0.2 && cc.area >= 30 && cc.x1 - cc.x0 + 1 >= w * 0.03 && solid(cc) && !nearEdge(cc))
       .map((cc) => ({ x0: cc.x0, x1: cc.x1, y0: cc.y0, y1: cc.y1 }))
       .sort((a, b) => a.x0 - b.x0);
     // Merge pieces of the same pin (overlapping columns).
@@ -642,6 +672,21 @@ export function detectChecklist(src) {
         continue;
       }
       final.push({ ...p });
+    }
+    // A box about twice as wide as a pin is usually two pins side by side: cut at the emptiest column.
+    for (let k = final.length - 1; k >= 0; k--) {
+      const p = final[k];
+      const pw = p.x1 - p.x0 + 1, ph = p.y1 - p.y0 + 1;
+      if (pw < medW * 1.6 || final.length < 3) continue;
+      let bestX = -1, bestV = Infinity;
+      for (let x = p.x0 + Math.round(pw * 0.25); x <= p.x1 - Math.round(pw * 0.25); x++) {
+        let v = 0;
+        for (let y = p.y0; y <= p.y1; y++) v += m[y * w + x];
+        if (v < bestV) { bestV = v; bestX = x; }
+      }
+      if (bestX > 0 && bestV <= ph * 0.08) {
+        final.splice(k, 1, { ...p, x1: bestX - 1 }, { ...p, x0: bestX + 1 });
+      }
     }
     // If a line of the name got joined onto the bottom of a pin, cut it off at the blank gap above it.
     for (const p of final) {

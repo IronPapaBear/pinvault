@@ -1,10 +1,10 @@
 // Settings: matching, set photos, sharing layouts with friends, backups, install help.
-import * as db from '../db.js?v=202610310955';
-import { state } from '../db.js?v=202610310955';
-import * as C from '../catalog.js?v=202610310955';
-import * as V from '../vision.js?v=202610310955';
-import { h, icon, toast, downloadFile, fileButton, confirmSheet, spinner } from '../ui.js?v=202610310955';
-import { catalogBanner } from './collection.js?v=202610310955';
+import * as db from '../db.js?v=202610311000';
+import { state } from '../db.js?v=202610311000';
+import * as C from '../catalog.js?v=202610311000';
+import * as V from '../vision.js?v=202610311000';
+import { h, icon, toast, downloadFile, fileButton, confirmSheet, spinner } from '../ui.js?v=202610311000';
+import { catalogBanner } from './collection.js?v=202610311000';
 
 const rerender = () => window.dispatchEvent(new Event('hashchange'));
 const local = { persisted: null };
@@ -58,6 +58,13 @@ export function settingsView() {
         h('input', { type: 'checkbox', class: 'toggle', checked: localStorage.getItem('pv.ocr') !== 'off',
           onchange: (e) => { localStorage.setItem('pv.ocr', e.target.checked ? 'on' : 'off'); } })),
       h('div', { class: 'small muted' }, 'Newer set photos are printed checklists with each pin\'s name, “Chaser:” and the series title. PinVault reads those (a one-time ~5 MB download) so your pins get real names, themes and chaser marks. Names you\'ve typed yourself are never changed.'),
+      (() => {
+        const st = localStorage.getItem('pv.ocrStatus') || '';
+        const named = db.allSlots().filter((x) => x.labelRect && x.autoNamed).length;
+        const total = db.allSlots().filter((x) => x.labelRect).length;
+        return h('div', { class: 'small ' + (st.startsWith('failed') ? 'txt-orange' : 'muted') },
+          st.startsWith('failed') ? 'Name reader couldn\'t load: ' + st.slice(8) : `Names read: ${named} of ${total}`);
+      })(),
       h('button', { class: 'btn small', disabled: C.status.running, onclick: async () => {
         for (const s of db.allSlots()) if (s.labelRect && !s.edited && s.autoNamed) await db.updateSlot(s, { autoNamed: false }, { markEdited: false });
         await C.readNames();
