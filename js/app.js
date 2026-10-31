@@ -1,12 +1,12 @@
 // PinVault web app: start-up, routing and the tab bar.
-import * as db from './db.js?v=202610311004';
-import * as C from './catalog.js?v=202610311004';
-import * as V from './vision.js?v=202610311004';
-import { set, h, icon, toast } from './ui.js?v=202610311004';
-import { collectionView, seriesView } from './views/collection.js?v=202610311004';
-import { boardView } from './views/board.js?v=202610311004';
-import { addView, tradeView } from './views/scan.js?v=202610311004';
-import { settingsView } from './views/settings.js?v=202610311004';
+import * as db from './db.js?v=202610311008';
+import * as C from './catalog.js?v=202610311008';
+import * as V from './vision.js?v=202610311008';
+import { set, h, icon, toast } from './ui.js?v=202610311008';
+import { collectionView, seriesView } from './views/collection.js?v=202610311008';
+import { boardView } from './views/board.js?v=202610311008';
+import { addView, tradeView } from './views/scan.js?v=202610311008';
+import { settingsView } from './views/settings.js?v=202610311008';
 
 const main = document.getElementById('main');
 const tabs = document.getElementById('tabs');

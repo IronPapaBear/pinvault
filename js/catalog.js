@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js?v=202610311004';
-import { state } from './db.js?v=202610311004';
-import { SERIES } from './seed.js?v=202610311004';
-import * as V from './vision.js?v=202610311004';
+import * as db from './db.js?v=202610311008';
+import { state } from './db.js?v=202610311008';
+import { SERIES } from './seed.js?v=202610311008';
+import * as V from './vision.js?v=202610311008';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -79,7 +79,7 @@ export async function addOwnBoard(seriesKey, file) {
 }
 
 // ---------- automatic boxes ----------
-const DETECTOR_VERSION = 3;
+const DETECTOR_VERSION = 4;
 
 /** Boxes the pins on every board photo that hasn't been done yet, and makes sure every box has a crop. */
 export async function autoCatalog() {
@@ -167,7 +167,7 @@ export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
   const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
   if (!todo.length) return;
-  const OCR = await import('./ocr.js?v=202610311004');
+  const OCR = await import('./ocr.js?v=202610311008');
   setStatus({ running: true, phase: 'Loading the name reader', done: 0, total: 1 });
   const ok = await OCR.ready();
   setStatus({ running: false, phase: '' });

@@ -622,6 +622,8 @@ export function detectChecklist(src) {
       if (fg[i] && isBarColour(i)) { if (x < tx0) tx0 = x; if (x > tx1) tx1 = x; if (y < ty0) ty0 = y; if (y > ty1) ty1 = y; }
     }
     const tab = tx1 - tx0 > w * 0.12 && ty1 - ty0 > sh * 0.05;
+    // Pieces of the title tab (its curved end, the "SET" letters) are not pins.
+    const tabBox = tab ? { x0: tx0, y0: ty0, x1: tx1 + Math.round(w * 0.03), y1: ty1 + Math.round(sh * 0.03) } : null;
     sections.push({ rect: tab
       ? { x: tx0 / w, y: (top + ty0) / h, w: (tx1 - tx0 + 1) / w, h: (ty1 - ty0 + 1) / h }
       : { x: 0, y: bars[s].y0 / h, w: 1, h: (bars[s].y1 - bars[s].y0 + 1) / h } });
@@ -641,6 +643,16 @@ export function detectChecklist(src) {
     let parts = comps.filter((cc) => cc.y1 - cc.y0 + 1 >= sh * 0.2 && cc.area >= 30 && cc.x1 - cc.x0 + 1 >= w * 0.03 && solid(cc) && !nearEdge(cc))
       .map((cc) => ({ x0: cc.x0, x1: cc.x1, y0: cc.y0, y1: cc.y1 }))
       .sort((a, b) => a.x0 - b.x0);
+    if (tabBox) {
+      parts = parts.filter((p) => {
+        const ix = Math.max(0, Math.min(p.x1, tabBox.x1) - Math.max(p.x0, tabBox.x0) + 1);
+        const iy = Math.max(0, Math.min(p.y1, tabBox.y1) - Math.max(p.y0, tabBox.y0) + 1);
+        const area = (p.x1 - p.x0 + 1) * (p.y1 - p.y0 + 1);
+        if (ix * iy > area * 0.35 && (p.y1 - tabBox.y1) < sh * 0.45) return false; // mostly tab
+        if (ix > 0 && p.y0 < ty1 && p.y1 > ty1 + sh * 0.3) p.y0 = ty1 + 1; // pin under the tab
+        return true;
+      });
+    }
     // Merge pieces of the same pin (overlapping columns).
     const merged = [];
     for (const p of parts) {
