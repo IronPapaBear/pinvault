@@ -700,6 +700,10 @@ export function detectChecklist(src) {
         final.splice(k, 1, { ...p, x1: bestX - 1 }, { ...p, x0: bestX + 1 });
       }
     }
+    // A thin sliver on its own (edge of a tab or frame) isn't a pin.
+    for (let k = final.length - 1; k >= 0 && final.length > 2; k--) {
+      if (final[k].x1 - final[k].x0 + 1 < medW * 0.45) final.splice(k, 1);
+    }
     // If a line of the name got joined onto the bottom of a pin, cut it off at the blank gap above it.
     for (const p of final) {
       const ph = p.y1 - p.y0 + 1;

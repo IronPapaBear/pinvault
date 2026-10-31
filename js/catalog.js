@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js?v=202610311127';
-import { state } from './db.js?v=202610311127';
-import { SERIES } from './seed.js?v=202610311127';
-import * as V from './vision.js?v=202610311127';
+import * as db from './db.js?v=202610311133';
+import { state } from './db.js?v=202610311133';
+import { SERIES } from './seed.js?v=202610311133';
+import * as V from './vision.js?v=202610311133';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -79,7 +79,7 @@ export async function addOwnBoard(seriesKey, file) {
 }
 
 // ---------- automatic boxes ----------
-const DETECTOR_VERSION = 4;
+const DETECTOR_VERSION = 5;
 
 /** Boxes the pins on every board photo that hasn't been done yet, and makes sure every box has a crop. */
 export async function autoCatalog() {
@@ -103,6 +103,16 @@ export async function autoCatalog() {
         if (list) {
           board.kind = 'checklist';
           board.sections = list.sections.map((x) => x.rect);
+          // Boxes you kept (owned or edited) take on the new box's set and name position.
+          for (const pin of list.pins) {
+            const old = db.slotsOfBoard(board.id).find((s) => s.rect && V.iou(s.rect, pin.rect) > 0.3);
+            if (old && (old.section !== pin.section || !old.labelRect)) {
+              const changes = { labelRect: pin.labelRect, section: pin.section, autoNamed: false };
+              if (!old.edited) changes.rect = pin.rect;
+              await db.updateSlot(old, changes, { markEdited: false });
+              if (changes.rect) await makeBoardRef(old, canvas);
+            }
+          }
           for (const pin of list.pins.filter((p) => fresh(p.rect))) {
             n++;
             const slot = await db.addSlot({
@@ -205,9 +215,9 @@ export async function tidyReadNames() {
 /** Reads pin names, chaser labels and series titles from checklist boards (text recognition, optional). */
 export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
-  const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
+  const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && (!s.edited || !s.group));
   if (!todo.length) return;
-  const OCR = await import('./ocr.js?v=202610311127');
+  const OCR = await import('./ocr.js?v=202610311133');
   setStatus({ running: true, phase: 'Loading the name reader', done: 0, total: 1 });
   const ok = await OCR.ready();
   setStatus({ running: false, phase: '' });
@@ -231,12 +241,13 @@ export async function readNames() {
         await db.put('series', series);
       }
       for (const slot of slots) {
-        if (slot.edited) continue;
-        const { name, kind } = parseLabel(await OCR.read(canvas, slot.labelRect));
         const changes = { autoNamed: true };
-        if (name) changes.name = name;
-        if (kind) changes.kind = kind;
-        if (titles[slot.section]) changes.group = titles[slot.section];
+        if (!slot.edited) {
+          const { name, kind } = parseLabel(await OCR.read(canvas, slot.labelRect));
+          if (name) changes.name = name;
+          if (kind) changes.kind = kind;
+        }
+        if (titles[slot.section] && (!slot.edited || !slot.group)) changes.group = titles[slot.section];
         await db.updateSlot(slot, changes, { markEdited: false });
         setStatus({ done: status.done + 1 });
       }
