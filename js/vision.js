@@ -392,7 +392,7 @@ function findBoard(L, A, B, w, h) {
     const holeArea = hc.reduce((s, c) => s + c.area, 0);
     // The board is the region holding the most "things" (pins), weighted by how much of it they fill.
     const score = hc.length * Math.sqrt(holeArea / n);
-    if (hc.length >= 2 && (!best || score > best.score)) best = { score, fg: holes, mean: cent[j] };
+    if (hc.length >= 2 && (!best || score > best.score)) best = { score, fg: holes, mean: cent[j], hull, region, filled };
   }
   return best;
 }
@@ -428,6 +428,13 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
   if (board) {
     mask = board.fg;
     bgColor = board.mean;
+    // Pins coloured almost like the board (a dark pin on a dark mat) still have shiny metal outlines:
+    // add anything clearly brighter or more colourful than the board, inside the board's outline.
+    for (let i = 0; i < n; i++) {
+      if (mask[i] || !board.hull[i] || !board.filled[i]) continue;
+      const chroma = Math.hypot(A[i] - bgColor[1], B[i] - bgColor[2]);
+      if (L[i] - bgColor[0] > 28 || chroma > 16) mask[i] = 1;
+    }
     mask = erode(dilate(mask, w, h, 1), w, h, 1);
     mask = fillHoles(mask, w, h);
     mask = dilate(erode(mask, w, h, 1), w, h, 1);
@@ -466,12 +473,13 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
   if (board) {
     // Keep blobs that look like pins: clearly different from the board and full of detail
     // (drops the board's own holes, fingers and shadows).
-    const stats = new Map(comps.map((c) => [c.label, { d: 0, m: 0, n: 0 }]));
+    const stats = new Map(comps.map((c) => [c.label, { d: 0, m: 0, n: 0, on: 0 }]));
     for (let i = 0; i < n; i++) {
       const st = stats.get(labels[i]);
       if (!st) continue;
       const dl = L[i] - bgColor[0], da = A[i] - bgColor[1], db = B[i] - bgColor[2];
       st.d += Math.sqrt(0.5 * dl * dl + da * da + db * db); st.m += mag[i]; st.n++;
+      if (board.filled[i]) st.on++;
     }
     const magRef = percentile(mag, 0.9) || 1;
     comps = comps.filter((c) => {
@@ -479,6 +487,13 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
       c.colorDist = st.d / st.n; c.detail = st.m / st.n / magRef;
       return c.colorDist > 16 && c.detail > 0.35;
     });
+    // Drop a blob far bigger than the pins around it (a patch of the room behind the board).
+    if (comps.length >= 3) {
+      const ba = (c) => (c.x1 - c.x0 + 1) * (c.y1 - c.y0 + 1);
+      const sorted = comps.map(ba).sort((a, b) => a - b);
+      const med = sorted[sorted.length >> 1];
+      comps = comps.filter((c) => ba(c) <= med * 3.2);
+    }
   }
   const nonBand = comps.filter((c) => !isBand(c));
   if (nonBand.length) comps = nonBand;

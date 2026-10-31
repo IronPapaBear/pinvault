@@ -1,6 +1,6 @@
 // Reads printed text (pin names, series titles) using Tesseract.js, loaded once from a public CDN.
 // Optional: if it can't load, PinVault simply keeps the "Disneyland #3"-style names.
-import { makeCanvas } from './vision.js?v=202610310943';
+import { makeCanvas } from './vision.js?v=202610310945';
 
 const SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 let workerPromise = null;
