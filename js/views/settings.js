@@ -19,7 +19,7 @@ export function settingsView() {
     local.persisted = 'checking';
   }
 
-  const slider = h('input', { type: 'range', min: '0.3', max: '0.8', step: '0.01', value: String(C.threshold()), class: 'range' });
+  const slider = h('input', { type: 'range', min: '0.35', max: '0.75', step: '0.01', value: String(C.threshold()), class: 'range' });
   const sliderVal = h('span', { class: 'mono muted' }, C.threshold().toFixed(2));
   slider.addEventListener('input', () => { C.setThreshold(Number(slider.value)); sliderVal.textContent = Number(slider.value).toFixed(2); });
 
@@ -52,6 +52,17 @@ export function settingsView() {
         rerender();
       } }, 'Turn on smart matching') : null,
       V.ml.status === 'ready' ? h('button', { class: 'btn small', onclick: () => { localStorage.setItem('pv.ml', 'off'); toast('Smart matching will be off next time you open PinVault'); } }, 'Turn off') : null),
+
+    h('div', { class: 'card stack tight' },
+      h('div', { class: 'row' }, h('span', { class: 'grow' }, 'Read pin names from checklists'),
+        h('input', { type: 'checkbox', class: 'toggle', checked: localStorage.getItem('pv.ocr') !== 'off',
+          onchange: (e) => { localStorage.setItem('pv.ocr', e.target.checked ? 'on' : 'off'); } })),
+      h('div', { class: 'small muted' }, 'Newer set photos are printed checklists with each pin\'s name, “Chaser:” and the series title. PinVault reads those (a one-time ~5 MB download) so your pins get real names, themes and chaser marks. Names you\'ve typed yourself are never changed.'),
+      h('button', { class: 'btn small', disabled: C.status.running, onclick: async () => {
+        for (const s of db.allSlots()) if (s.labelRect && !s.edited && s.autoNamed) await db.updateSlot(s, { autoNamed: false }, { markEdited: false });
+        await C.readNames();
+        toast('Done reading names');
+      } }, 'Read names again')),
 
     h('div', { class: 'section-title' }, 'Set photos'),
     h('div', { class: 'card stack tight' },

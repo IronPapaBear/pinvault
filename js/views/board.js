@@ -45,6 +45,12 @@ export function boardView(id) {
     onDraw: async (rect) => {
       await C.addBoxes(board, [rect], { group: boardPrefs.group, kind: boardPrefs.kind, edited: !!boardPrefs.group || boardPrefs.kind !== 'regular' });
     },
+    onPoint: async (x, y) => {
+      busy = 'Finding that pin…'; rerender();
+      const canvas = await V.blobToCanvas(board.blob, 2400);
+      busy = '';
+      await C.addBoxes(board, [V.pinAt(canvas, x, y)], { group: boardPrefs.group, kind: boardPrefs.kind, edited: !!boardPrefs.group || boardPrefs.kind !== 'regular' });
+    },
   });
 
   const kindSelect = h('select', { class: 'select', onchange: (e) => { boardPrefs.kind = e.target.value; } },
@@ -78,7 +84,7 @@ export function boardView(id) {
         class: 'input', placeholder: 'Theme', value: boardPrefs.group,
         oninput: (e) => { boardPrefs.group = e.target.value; },
       }), kindSelect)),
-    h('p', { class: 'small muted' }, 'Tap a box to rename it, set its theme or type, mark it owned, split it, or delete it. Tap Draw box and drag to add a pin the app missed.'));
+    h('p', { class: 'small muted' }, 'Tap a box to rename it, set its theme or type, mark it owned, split it, or delete it. Missed one? Tap Box a pin, then tap the pin (or drag around it).'));
 }
 
 function rerender() { window.dispatchEvent(new Event('hashchange')); }

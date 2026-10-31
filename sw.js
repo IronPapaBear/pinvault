@@ -1,8 +1,8 @@
 // Offline support: keeps the app (and the optional image AI) on the phone so it works in the parks.
-const VERSION = 'pinvault-v1';
+const VERSION = 'pinvault-v2';
 const APP = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/db.js', 'js/ui.js', 'js/seed.js', 'js/vision.js', 'js/catalog.js', 'js/annotator.js',
+  'js/app.js', 'js/db.js', 'js/ui.js', 'js/seed.js', 'js/vision.js', 'js/catalog.js', 'js/annotator.js', 'js/ocr.js',
   'js/views/collection.js', 'js/views/board.js', 'js/views/scan.js', 'js/views/live.js', 'js/views/settings.js', 'js/views/sheets.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];

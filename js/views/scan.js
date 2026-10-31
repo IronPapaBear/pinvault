@@ -19,7 +19,7 @@ export const sessions = { add: newSession(), trade: newSession() };
 
 function makePin(scan, index) {
   const matches = C.matchesFor(index, scan, 5);
-  const confident = matches.length && matches[0].d < C.threshold();
+  const confident = C.isConfident(matches);
   return {
     id: nextId++, rect: scan.rect, blob: scan.blob, url: scan.blob ? URL.createObjectURL(scan.blob) : '',
     basic: scan.basic, ml: scan.ml, matches, chosen: confident ? 0 : null, include: !!confident,
@@ -42,6 +42,14 @@ export async function loadPhoto(session, source) {
   const index = C.buildIndex();
   session.catalogEmpty = index.length === 0;
   session.pins = scans.map((s) => makePin(s, index));
+  session.working = '';
+  rerender();
+}
+
+async function tapPin(session, x, y) {
+  session.working = 'Finding that pin…'; rerender();
+  await new Promise((r) => setTimeout(r, 20));
+  await addBox(session, V.pinAt(session.canvas, x, y));
   session.working = '';
   rerender();
 }
@@ -119,6 +127,7 @@ export function addView() {
     s.canvas ? annotator({
       key: 'add', src: s.url, boxes, height: '40vh',
       onDraw: (rect) => addBox(s, rect),
+      onPoint: (x, y) => tapPin(s, x, y),
       onTapBox: (id) => { const p = s.pins.find((x) => x.id === id); if (p) openSplitSheet({ cropURL: p.url, onSplit: (r, c) => splitPin(s, p, r, c) }); },
     }).el : null,
     s.working ? spinner(s.working) : null,
@@ -140,13 +149,13 @@ export function addView() {
           rerender();
         },
       }, icon('plus'), h('span', {}, `Add ${selected.length} to my collection`))) : null,
-    s.pins.length ? h('p', { class: 'small muted' }, 'Missed a pin? Tap Draw box and drag around it. A box around several pins? Tap the box to split it.') : null);
+    s.pins.length ? h('p', { class: 'small muted' }, 'Missed a pin? Tap Box a pin, then tap the pin (or drag around it). A box around several pins? Tap the box to split it.') : null);
 }
 
 function addRow(s, p, i) {
   const slot = chosenSlot(p);
   const m = p.chosen != null ? p.matches[p.chosen] : null;
-  const conf = m ? (m.picked ? { label: 'You picked', cls: 'green' } : C.confidence(m.d)) : null;
+  const conf = m ? (m.picked ? { label: 'You picked', cls: 'green' } : C.confidence(m.d, p.matches)) : null;
   const ref = slot ? db.thumbRef(slot) : null;
   return h('div', { class: 'list-row top' },
     h('div', { class: 'thumb md numbered', 'data-n': i + 1, onclick: () => showPin(s, p) }, h('img', { src: p.url })),
@@ -209,6 +218,7 @@ export function tradeView() {
     s.canvas ? annotator({
       key: 'trade', src: s.url, boxes, height: '48vh',
       onDraw: (rect) => addBox(s, rect),
+      onPoint: (x, y) => tapPin(s, x, y),
       onTapBox: (id) => { const p = s.pins.find((x) => x.id === id); if (p) showTrade(s, p); },
     }).el : null,
     s.working ? spinner(s.working) : h('div', { class: 'card stack tight' },
@@ -230,7 +240,7 @@ export function tradeView() {
           h('div', { class: 'small' }, state.series.get(slot.seriesKey).title), slot.group ? h('div', { class: 'small muted' }, slot.group) : null),
         ref ? h('div', { class: 'thumb sm' }, h('img', { src: db.blobURL(ref.blob) })) : null);
     }))] : null,
-    h('p', { class: 'small muted' }, 'Tap any box for details or to split a box that covers several pins. Missed a pin? Tap Draw box and drag around it.'));
+    h('p', { class: 'small muted' }, 'Tap any box for details or to split a box that covers several pins. Missed a pin? Tap Box a pin, then tap the pin (or drag around it).'));
 }
 
 function showTrade(s, p) {

@@ -201,7 +201,7 @@ export function openBoardPicker({ query, cropURL, onPick }) {
         return h('button', { class: 'list-row', onclick: () => showBoard(b) },
           h('div', { class: 'thumb sm' }, h('img', { src: db.blobURL(b.blob), alt: '' })),
           h('div', { class: 'grow' }, h('div', { class: 'bold' }, s.title), h('div', { class: 'small muted' }, b.label)),
-          highlight && d != null && d < t ? h('span', { class: 'pill green' }, 'Good match') : null,
+          highlight && d != null && d < t * 0.75 ? h('span', { class: 'pill green' }, 'Good match') : null,
           icon('chev', 'muted'));
       };
 
@@ -252,12 +252,19 @@ export function openBoardPicker({ query, cropURL, onPick }) {
             sheet.close();
             onPick(s);
           },
+          onPoint: async (x, y) => {
+            set(working, spinner('Finding that pin…'));
+            const canvas = await V.blobToCanvas(board.blob, 2400);
+            const [s] = await C.addBoxes(board, [V.pinAt(canvas, x, y)]);
+            sheet.close();
+            onPick(s);
+          },
         });
         api.setContent(h('div', { class: 'pad stack' },
           h('div', { class: 'row' }, h('div', { class: 'thumb sm' }, h('img', { src: cropURL })),
             h('div', { class: 'small grow' }, boxes.length
-              ? 'Tap the box around the pin that matches yours. Yellow = best guesses. Not boxed? Tap Draw box and drag around it.'
-              : 'Tap Draw box, then drag around the pin that matches yours.')),
+              ? 'Tap the box around the pin that matches yours. Yellow = best guesses. Not boxed? Tap Box a pin, then tap it.'
+              : 'Tap Box a pin, then tap the pin that matches yours.')),
           ann.el, working));
       };
 
@@ -277,7 +284,7 @@ export function openMatchesSheet({ pin, onChoose, onFind, onNone, onSplit, extra
       onSplit ? h('button', { class: 'btn wide', onclick: () => { api.close(); onSplit(); } }, icon('split'), h('span', {}, 'This box covers several pins — split it')) : null,
       h('div', { class: 'section-title' }, 'Best matches'),
       pin.matches.length ? h('div', { class: 'list' }, pin.matches.map((m, i) => {
-        const conf = C.confidence(m.d);
+        const conf = C.confidence(m.d, i === 0 ? pin.matches : null);
         const s = m.slot;
         const ref = db.thumbRef(s);
         return h('button', { class: 'list-row' + (pin.chosen === i ? ' selected' : ''), onclick: () => { api.close(); onChoose(i); } },

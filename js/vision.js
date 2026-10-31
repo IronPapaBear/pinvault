@@ -287,6 +287,116 @@ export function iou(a, b) {
   return inter / (area(a) + area(b) - inter);
 }
 
+// ---------- finding the board / mat / lanyard the pins sit on ----------
+
+/** k-means colour clusters (Lab), deterministic. */
+function kmeans(L, A, B, n, k, iters = 8) {
+  const step = Math.max(1, Math.floor(n / 6000));
+  const cent = [];
+  for (let j = 0; j < k; j++) { const i = Math.floor(((j + 0.5) / k) * n); cent.push([L[i], A[i], B[i]]); }
+  // spread the starting points (k-means++ style, deterministic)
+  for (let j = 1; j < k; j++) {
+    let best = -1, bi = 0;
+    for (let i = 0; i < n; i += step) {
+      let dm = Infinity;
+      for (let q = 0; q < j; q++) { const d = (L[i] - cent[q][0]) ** 2 + (A[i] - cent[q][1]) ** 2 + (B[i] - cent[q][2]) ** 2; if (d < dm) dm = d; }
+      if (dm > best) { best = dm; bi = i; }
+    }
+    cent[j] = [L[bi], A[bi], B[bi]];
+  }
+  const lab = new Uint8Array(n);
+  for (let it = 0; it < iters; it++) {
+    const acc = cent.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) {
+      let bd = Infinity, bj = 0;
+      for (let j = 0; j < k; j++) {
+        const d = (L[i] - cent[j][0]) ** 2 + (A[i] - cent[j][1]) ** 2 + (B[i] - cent[j][2]) ** 2;
+        if (d < bd) { bd = d; bj = j; }
+      }
+      lab[i] = bj;
+      const a = acc[bj]; a[0] += L[i]; a[1] += A[i]; a[2] += B[i]; a[3]++;
+    }
+    for (let j = 0; j < k; j++) if (acc[j][3]) cent[j] = [acc[j][0] / acc[j][3], acc[j][1] / acc[j][3], acc[j][2] / acc[j][3]];
+  }
+  return { lab, cent };
+}
+
+/** Filled convex hull of a mask (rows scanned as one interval each). */
+function convexHullMask(m, w, h) {
+  const pts = [];
+  for (let y = 0; y < h; y++) {
+    let x0 = -1, x1 = -1;
+    for (let x = 0; x < w; x++) if (m[y * w + x]) { if (x0 < 0) x0 = x; x1 = x; }
+    if (x0 >= 0) { pts.push([x0, y]); if (x1 !== x0) pts.push([x1, y]); }
+  }
+  const out = new Uint8Array(w * h);
+  if (pts.length < 3) return out.fill(1);
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const poly = lower.slice(0, -1).concat(upper.slice(0, -1));
+  for (let y = 0; y < h; y++) {
+    let xmin = Infinity, xmax = -Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length];
+      if ((ay <= y && by >= y) || (by <= y && ay >= y)) {
+        const x = ay === by ? Math.min(ax, bx) : ax + ((y - ay) * (bx - ax)) / (by - ay);
+        const x2 = ay === by ? Math.max(ax, bx) : x;
+        xmin = Math.min(xmin, x, x2); xmax = Math.max(xmax, x, x2);
+      }
+    }
+    if (xmin <= xmax) for (let x = Math.max(0, Math.floor(xmin)); x <= Math.min(w - 1, Math.ceil(xmax)); x++) out[y * w + x] = 1;
+  }
+  return out;
+}
+
+/**
+ * Looks for one big, evenly coloured region with several "holes" in it — a pin board, mat or lanyard
+ * with pins on it. Returns { fg: mask of things on the board, mean: board colour } or null.
+ */
+function findBoard(L, A, B, w, h) {
+  const n = w * h;
+  const k = 6;
+  const { lab, cent } = kmeans(L, A, B, n, k);
+  const r = Math.max(3, Math.round(Math.max(w, h) * 0.025));
+  let best = null;
+  for (let j = 0; j < k; j++) {
+    let m = new Uint8Array(n);
+    let cnt = 0;
+    for (let i = 0; i < n; i++) if (lab[i] === j) { m[i] = 1; cnt++; }
+    if (cnt < n * 0.08) continue;
+    // Also count close shades of the same colour (e.g. the darker holes of a mat) as board.
+    for (let i = 0; i < n; i++) {
+      if (m[i]) continue;
+      const d = (L[i] - cent[j][0]) ** 2 * 0.5 + (A[i] - cent[j][1]) ** 2 + (B[i] - cent[j][2]) ** 2;
+      if (d < 7 * 7) m[i] = 1;
+    }
+    m = dilate(erode(m, w, h, 1), w, h, 1);
+    const { labels, comps } = components(m, w, h);
+    if (!comps.length) continue;
+    const big = comps.reduce((a, b) => (b.area > a.area ? b : a));
+    if (big.area < n * 0.08) continue;
+    const region = new Uint8Array(n);
+    for (let i = 0; i < n; i++) region[i] = labels[i] === big.label ? 1 : 0;
+    // Close the outline so pins hanging over the edge still count as "on" the board.
+    const closed = erode(dilate(region, w, h, r), w, h, r);
+    const filled = fillHoles(closed, w, h);
+    // Only count things within the board's outline (its convex hull), not the room around it.
+    const hull = convexHullMask(region, w, h);
+    const holes = new Uint8Array(n);
+    for (let i = 0; i < n; i++) holes[i] = filled[i] && !region[i] && hull[i] ? 1 : 0;
+    const hc = components(dilate(erode(holes, w, h, 1), w, h, 1), w, h).comps
+      .filter((c) => c.area >= n * 0.002 && c.area <= n * 0.3);
+    const holeArea = hc.reduce((s, c) => s + c.area, 0);
+    // The board is the region holding the most "things" (pins), weighted by how much of it they fill.
+    const score = hc.length * Math.sqrt(holeArea / n);
+    if (hc.length >= 2 && (!best || score > best.score)) best = { score, fg: holes, mean: cent[j] };
+  }
+  return best;
+}
+
 // ---------- detection ----------
 
 /**
@@ -303,15 +413,7 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
   const n = w * h;
   const { L, A, B } = toLab(data, n);
 
-  // 1. How different is each pixel from the background (sampled from the photo's edges)?
-  const t = Math.max(2, Math.round(Math.min(w, h) * 0.03));
-  const [Lb, Ab, Bb] = borderMedian(L, A, B, w, h, t);
-  const cd = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const dl = L[i] - Lb, da = A[i] - Ab, db = B[i] - Bb;
-    cd[i] = Math.sqrt(0.5 * dl * dl + da * da + db * db);
-  }
-  // 2. Edge density (pins have strong metal outlines).
+  // Edge strength (pins have strong metal outlines and busy artwork).
   const mag = new Float32Array(n);
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
     const i = y * w + x;
@@ -319,21 +421,41 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
     const gy = L[i + w - 1] + 2 * L[i + w] + L[i + w + 1] - L[i - w - 1] - 2 * L[i - w] - L[i - w + 1];
     mag[i] = Math.sqrt(gx * gx + gy * gy);
   }
-  const ed = boxBlur(mag, w, h, 2);
-  const cdS = boxBlur(cd, w, h, 1);
-  const pc = percentile(cdS, 0.95), pe = percentile(ed, 0.95);
-  const score = new Float32Array(n);
-  for (let i = 0; i < n; i++) score[i] = Math.min(1.5, 0.65 * (cdS[i] / pc) + 0.35 * (ed[i] / pe));
 
-  const thr = Math.max(0.22, otsu(score));
-  let mask = new Uint8Array(n);
-  for (let i = 0; i < n; i++) mask[i] = score[i] > thr ? 1 : 0;
-  mask = erode(dilate(mask, w, h, 2), w, h, 2);   // close small gaps
-  mask = fillHoles(mask, w, h);
-  mask = dilate(erode(mask, w, h, 1), w, h, 1);   // remove specks
+  // A. Pins sitting on a board, mat or lanyard: find the board and treat what's on it as pins.
+  const board = findBoard(L, A, B, w, h);
+  let mask, bgColor;
+  if (board) {
+    mask = board.fg;
+    bgColor = board.mean;
+    mask = erode(dilate(mask, w, h, 1), w, h, 1);
+    mask = fillHoles(mask, w, h);
+    mask = dilate(erode(mask, w, h, 1), w, h, 1);
+  } else {
+    // B. Pins on a plain background: compare every pixel with the photo's edges.
+    const t = Math.max(2, Math.round(Math.min(w, h) * 0.03));
+    bgColor = borderMedian(L, A, B, w, h, t);
+    const [Lb, Ab, Bb] = bgColor;
+    const cd = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const dl = L[i] - Lb, da = A[i] - Ab, db = B[i] - Bb;
+      cd[i] = Math.sqrt(0.5 * dl * dl + da * da + db * db);
+    }
+    const ed = boxBlur(mag, w, h, 2);
+    const cdS = boxBlur(cd, w, h, 1);
+    const pc = percentile(cdS, 0.95), pe = percentile(ed, 0.95);
+    const score = new Float32Array(n);
+    for (let i = 0; i < n; i++) score[i] = Math.min(1.5, 0.65 * (cdS[i] / pc) + 0.35 * (ed[i] / pe));
+    const thr = Math.max(0.22, otsu(score));
+    mask = new Uint8Array(n);
+    for (let i = 0; i < n; i++) mask[i] = score[i] > thr ? 1 : 0;
+    mask = erode(dilate(mask, w, h, 2), w, h, 2);   // close small gaps
+    mask = fillHoles(mask, w, h);
+    mask = dilate(erode(mask, w, h, 1), w, h, 1);   // remove specks
+  }
 
   const { labels, comps: all } = components(mask, w, h);
-  const minArea = Math.max(12, n * 0.0012);
+  const minArea = Math.max(12, n * (board ? 0.0035 : 0.0012));
   // Ignore banners, frames and table edges: blobs that touch the photo's edge and span most of it.
   const isBand = (c) => {
     const bw = c.x1 - c.x0 + 1, bh = c.y1 - c.y0 + 1;
@@ -341,6 +463,23 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
     return (bw > 0.75 * w && touchesY) || (bh > 0.75 * h && touchesX);
   };
   let comps = all.filter((c) => c.area >= minArea);
+  if (board) {
+    // Keep blobs that look like pins: clearly different from the board and full of detail
+    // (drops the board's own holes, fingers and shadows).
+    const stats = new Map(comps.map((c) => [c.label, { d: 0, m: 0, n: 0 }]));
+    for (let i = 0; i < n; i++) {
+      const st = stats.get(labels[i]);
+      if (!st) continue;
+      const dl = L[i] - bgColor[0], da = A[i] - bgColor[1], db = B[i] - bgColor[2];
+      st.d += Math.sqrt(0.5 * dl * dl + da * da + db * db); st.m += mag[i]; st.n++;
+    }
+    const magRef = percentile(mag, 0.9) || 1;
+    comps = comps.filter((c) => {
+      const st = stats.get(c.label);
+      c.colorDist = st.d / st.n; c.detail = st.m / st.n / magRef;
+      return c.colorDist > 16 && c.detail > 0.35;
+    });
+  }
   const nonBand = comps.filter((c) => !isBand(c));
   if (nonBand.length) comps = nonBand;
   if (!comps.length) return [];
@@ -380,7 +519,7 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
     } else if (stretched) {
       if (aspect > 1) cols = Math.max(1, Math.round(aspect)); else rows = Math.max(1, Math.round(1 / aspect));
     }
-    if (gridSplit && cols * rows >= 2 && cols * rows <= 48) {
+    if (gridSplit && !board && cols * rows >= 2 && cols * rows <= 48) {
       const cw = bw / cols, ch = bh / rows;
       for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
         out.push({ x0: b.x0 + j * cw, y0: b.y0 + i * ch, x1: b.x0 + (j + 1) * cw - 1, y1: b.y0 + (i + 1) * ch - 1 });
@@ -392,6 +531,195 @@ export function detectPins(src, { workSize = 360, gridSplit = true } = {}) {
     .map((b) => ({ x: b.x0 / w, y: b.y0 / h, w: (b.x1 - b.x0 + 1) / w, h: (b.y1 - b.y0 + 1) / h }))
     .filter((r) => { const a = r.w / r.h; return a > 0.2 && a < 5; })
     .sort((a, b) => (Math.abs(a.y - b.y) < Math.min(a.h, b.h) * 0.5 ? a.x - b.x : a.y - b.y));
+}
+
+// ---------- printed checklists (pins drawn on white with names under them and coloured section bars) ----------
+
+/**
+ * Recognises the official-style checklist graphics. Returns null for ordinary photos.
+ * Result: { pins: [{rect, labelRect, section}], sections: [{rect}] } — all normalized 0..1.
+ */
+export function detectChecklist(src) {
+  const W0 = src.width, H0 = src.height;
+  const sc = Math.min(1, 1000 / Math.max(W0, H0));
+  const w = Math.round(W0 * sc), h = Math.round(H0 * sc);
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const n = w * h;
+  const fg = new Uint8Array(n);
+  let white = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = d[p], g = d[p + 1], b = d[p + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const isWhite = mn > 222 && mx - mn < 28;
+    if (isWhite) white++; else fg[i] = 1;
+  }
+  if (white / n < 0.38) return null; // not a white-background checklist
+
+  // Full-width colour bars mark the start of each series.
+  const rowFrac = new Float32Array(h);
+  for (let y = 0; y < h; y++) {
+    let s = 0;
+    for (let x = 0; x < w; x++) s += fg[y * w + x];
+    rowFrac[y] = s / w;
+  }
+  const bars = [];
+  for (let y = 0; y < h; y++) {
+    if (rowFrac[y] > 0.85) {
+      let y1 = y;
+      while (y1 + 1 < h && rowFrac[y1 + 1] > 0.85) y1++;
+      if (y1 - y + 1 >= Math.max(3, h * 0.008)) bars.push({ y0: y, y1 });
+      y = y1;
+    }
+  }
+  if (bars.length < 2) return null;
+
+  const pins = [];
+  const sections = [];
+  const footer = Math.round(h * 0.985);
+  for (let s = 0; s < bars.length; s++) {
+    const top = bars[s].y1 + 1;
+    const bottom = s + 1 < bars.length ? bars[s + 1].y0 - 1 : Math.min(h - 1, footer);
+    const sh = bottom - top + 1;
+    if (sh < h * 0.04) continue;
+    sections.push({ rect: { x: 0, y: bars[s].y0 / h, w: 1, h: (bars[s].y1 - bars[s].y0 + 1) / h } });
+    const secIndex = sections.length - 1;
+
+    // Section mask with small gaps closed, then blobs.
+    let m = new Uint8Array(w * sh);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < w; x++) m[y * w + x] = fg[(top + y) * w + x];
+    m = erode(dilate(m, w, sh, 2), w, sh, 2);
+    const { comps } = components(m, w, sh);
+    // Pin pieces are tall; letters of the names are short.
+    let parts = comps.filter((cc) => cc.y1 - cc.y0 + 1 >= sh * 0.2 && cc.area >= 30)
+      .map((cc) => ({ x0: cc.x0, x1: cc.x1, y0: cc.y0, y1: cc.y1 }))
+      .sort((a, b) => a.x0 - b.x0);
+    // Merge pieces of the same pin (overlapping columns).
+    const merged = [];
+    for (const p of parts) {
+      const last = merged[merged.length - 1];
+      if (last) {
+        const ov = Math.min(last.x1, p.x1) - Math.max(last.x0, p.x0);
+        const narrow = Math.min(last.x1 - last.x0, p.x1 - p.x0) + 1;
+        if (ov > narrow * 0.3) {
+          last.x0 = Math.min(last.x0, p.x0); last.x1 = Math.max(last.x1, p.x1);
+          last.y0 = Math.min(last.y0, p.y0); last.y1 = Math.max(last.y1, p.y1);
+          continue;
+        }
+      }
+      merged.push({ ...p });
+    }
+    // Small leftovers next to a pin (a detached ear, a flag) join their nearest neighbour.
+    const widths = merged.map((p) => p.x1 - p.x0 + 1).sort((a, b) => a - b);
+    const medW = widths[widths.length >> 1] || 1;
+    const final = [];
+    for (const p of merged) {
+      const pw = p.x1 - p.x0 + 1;
+      const last = final[final.length - 1];
+      if (last && pw < medW * 0.4 && p.x0 - last.x1 < medW * 0.15) {
+        last.x1 = Math.max(last.x1, p.x1); last.y0 = Math.min(last.y0, p.y0); last.y1 = Math.max(last.y1, p.y1);
+        continue;
+      }
+      if (last && (last.x1 - last.x0 + 1) < medW * 0.4 && p.x0 - last.x1 < medW * 0.15) {
+        last.x1 = p.x1; last.y0 = Math.min(last.y0, p.y0); last.y1 = Math.max(last.y1, p.y1);
+        continue;
+      }
+      final.push({ ...p });
+    }
+    // If a line of the name got joined onto the bottom of a pin, cut it off at the blank gap above it.
+    for (const p of final) {
+      const ph = p.y1 - p.y0 + 1;
+      const empty = (yy) => {
+        let s = 0;
+        for (let x = p.x0; x <= p.x1; x++) s += fg[(top + yy) * w + x];
+        return s <= 1;
+      };
+      let yb = p.y1;
+      while (yb > p.y0 && empty(yb)) yb--;
+      for (let yy = yb; yy > p.y0 + ph * 0.6; yy--) {
+        if (empty(yy) && empty(yy - 1)) {
+          let g = yy - 1;
+          while (g > p.y0 && empty(g - 1)) g--;
+          if (yb - yy < ph * 0.3) p.y1 = g - 1;
+          break;
+        }
+      }
+    }
+    final.forEach((p, i) => {
+      // The name sits below the pin, between the neighbours' midpoints.
+      const left = i > 0 ? (final[i - 1].x1 + p.x0) / 2 : Math.max(0, p.x0 - medW * 0.3);
+      const right = i < final.length - 1 ? (p.x1 + final[i + 1].x0) / 2 : Math.min(w - 1, p.x1 + medW * 0.3);
+      const labelTop = top + p.y1 + 1;
+      pins.push({
+        section: secIndex,
+        rect: { x: p.x0 / w, y: (top + p.y0) / h, w: (p.x1 - p.x0 + 1) / w, h: (p.y1 - p.y0 + 1) / h },
+        labelRect: { x: left / w, y: labelTop / h, w: (right - left) / w, h: Math.max(1, bottom - labelTop + 1) / h },
+      });
+    });
+  }
+  return pins.length >= 3 ? { pins, sections } : null;
+}
+
+/** Finds pins by their bright metal outlines / bright enamel against a darker background. */
+function outlineRects(src) {
+  const sc = Math.min(1, 260 / Math.max(src.width, src.height));
+  const w = Math.max(8, Math.round(src.width * sc)), h = Math.max(8, Math.round(src.height * sc));
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, 0, 0, w, h);
+  const n = w * h;
+  const { L, A, B } = toLab(ctx.getImageData(0, 0, w, h).data, n);
+  const [Lb, Ab, Bb] = borderMedian(L, A, B, w, h, Math.max(2, Math.round(Math.min(w, h) * 0.04)));
+  let m = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const chroma = Math.hypot(A[i] - Ab, B[i] - Bb);
+    m[i] = L[i] - Lb > 22 || chroma > 18 ? 1 : 0;
+  }
+  m = erode(dilate(m, w, h, 2), w, h, 2);
+  m = fillHoles(m, w, h);
+  m = dilate(erode(m, w, h, 2), w, h, 2);
+  return components(m, w, h).comps.filter((cc) => cc.area >= n * 0.01)
+    .map((cc) => ({ x: cc.x0 / w, y: cc.y0 / h, w: (cc.x1 - cc.x0 + 1) / w, h: (cc.y1 - cc.y0 + 1) / h }));
+}
+
+/**
+ * "Tap a pin": finds the pin around a tapped point (normalized x, y) by looking at a window around it,
+ * growing the window if the pin runs off its edge. Returns a normalized rect.
+ */
+export function pinAt(src, px, py) {
+  const W = src.width, H = src.height;
+  let best = null;
+  for (const frac of [0.3, 0.45, 0.62]) {
+    const side = frac * Math.min(W, H);
+    const x0 = Math.max(0, px * W - side / 2), y0 = Math.max(0, py * H - side / 2);
+    const x1 = Math.min(W, px * W + side / 2), y1 = Math.min(H, py * H + side / 2);
+    const cw = x1 - x0, ch = y1 - y0;
+    const c = makeCanvas(cw, ch);
+    c.getContext('2d').drawImage(src, x0, y0, cw, ch, 0, 0, cw, ch);
+    const cx = (px * W - x0) / cw, cy = (py * H - y0) / ch;
+    const rects = detectPins(c, { workSize: 260, gridSplit: false });
+    const contains = (r) => cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h;
+    const inside = rects.filter(contains);
+    let pick = inside.sort((a, b) => a.w * a.h - b.w * b.h)[0];
+    // Dark pins on dark boards: trace the shiny metal outline instead, and keep the bigger find.
+    const traced = outlineRects(c).filter(contains).sort((a, b) => b.w * b.h - a.w * a.h)[0];
+    if (traced && traced.w * traced.h < 0.8 && (!pick || pick.w * pick.h < 0.05)) pick = traced;
+    if (!pick && rects.length) {
+      const dist = (r) => Math.hypot(r.x + r.w / 2 - cx, r.y + r.h / 2 - cy);
+      const near = rects.sort((a, b) => dist(a) - dist(b))[0];
+      if (dist(near) < 0.18) pick = near;
+    }
+    if (!pick) continue;
+    best = { x: (x0 + pick.x * cw) / W, y: (y0 + pick.y * ch) / H, w: (pick.w * cw) / W, h: (pick.h * ch) / H };
+    const m = 0.02;
+    const touches = pick.x < m || pick.y < m || pick.x + pick.w > 1 - m || pick.y + pick.h > 1 - m;
+    if (!touches) break;
+  }
+  if (best) return best;
+  const s = 0.16 * Math.min(W, H);
+  return { x: Math.max(0, px - s / 2 / W), y: Math.max(0, py - s / 2 / H), w: s / W, h: s / H };
 }
 
 /** For a photo of one pin: the biggest detected object, or the whole photo. */

@@ -37,7 +37,7 @@ export function annotator(opts) {
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(applyZoom).observe(scroll);
   const applyDraw = () => {
     drawBtn.className = 'btn small ' + (mem.draw ? 'warn' : '');
-    set(drawBtn, icon('box'), h('span', {}, mem.draw ? 'Drawing — drag around a pin' : 'Draw box'));
+    set(drawBtn, icon('box'), h('span', {}, mem.draw ? 'Tap a pin, or drag around it' : 'Box a pin'));
     scroll.classList.toggle('drawing', mem.draw);
   };
   drawBtn.addEventListener('click', () => { mem.draw = !mem.draw; applyDraw(); });
@@ -97,7 +97,8 @@ export function annotator(opts) {
     const rect = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
     start = null;
     if (draft) { draft.remove(); draft = null; }
-    if (rect.w > 0.01 && rect.h > 0.01) opts.onDraw && opts.onDraw(rect);
+    if (rect.w > 0.015 && rect.h > 0.015) opts.onDraw && opts.onDraw(rect);
+    else if (opts.onPoint) opts.onPoint(p.x, p.y);
   };
   layer.addEventListener('pointerup', finish);
   layer.addEventListener('pointercancel', () => { start = null; if (draft) { draft.remove(); draft = null; } });

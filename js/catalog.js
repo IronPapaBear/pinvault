@@ -79,7 +79,7 @@ export async function addOwnBoard(seriesKey, file) {
 }
 
 // ---------- automatic boxes ----------
-const DETECTOR_VERSION = 1;
+const DETECTOR_VERSION = 2;
 
 /** Boxes the pins on every board photo that hasn't been done yet, and makes sure every box has a crop. */
 export async function autoCatalog() {
@@ -96,14 +96,29 @@ export async function autoCatalog() {
       const canvas = await V.blobToCanvas(board.blob, 2400);
       if (!board.autoScanned && !board.fromLayout) {
         const existing = db.slotsOfBoard(board.id).map((s) => s.rect);
-        const rects = V.detectPins(canvas)
-          .filter((r) => r.w * r.h < 0.3)
-          .filter((r) => !existing.some((e) => e && V.iou(e, r) > 0.3));
+        const fresh = (r) => !existing.some((e) => e && V.iou(e, r) > 0.3);
         let n = existing.length;
-        for (const rect of rects) {
-          n++;
-          const slot = await db.addSlot({ seriesKey: board.seriesKey, boardId: board.id, rect, name: `${board.label} #${n}` });
-          await makeBoardRef(slot, canvas);
+        // Printed checklists (white background, names under the pins, coloured series bars).
+        const list = V.detectChecklist(canvas);
+        if (list) {
+          board.kind = 'checklist';
+          board.sections = list.sections.map((x) => x.rect);
+          for (const pin of list.pins.filter((p) => fresh(p.rect))) {
+            n++;
+            const slot = await db.addSlot({
+              seriesKey: board.seriesKey, boardId: board.id, rect: pin.rect, name: `${board.label} #${n}`,
+              labelRect: pin.labelRect, section: pin.section,
+            });
+            await makeBoardRef(slot, canvas);
+          }
+        } else {
+          board.kind = 'photo';
+          const rects = V.detectPins(canvas).filter((r) => r.w * r.h < 0.3).filter(fresh);
+          for (const rect of rects) {
+            n++;
+            const slot = await db.addSlot({ seriesKey: board.seriesKey, boardId: board.id, rect, name: `${board.label} #${n}` });
+            await makeBoardRef(slot, canvas);
+          }
         }
       }
       // Boxes that came from a shared layout (or older versions) still need their crops.
@@ -117,6 +132,73 @@ export async function autoCatalog() {
     }
     setStatus({ done: status.done + 1 });
     await new Promise((r) => setTimeout(r, 0));
+  }
+  setStatus({ running: false, phase: '' });
+  await readNames();
+}
+
+// ---------- reading names off printed checklists ----------
+
+const titleCase = (t) => t.toLowerCase().replace(/(^|[\s\-'’(])([a-z])/g, (m, a, b) => a + b.toUpperCase())
+  .replace(/\b(N|Of|The|And|&)\b/g, (m) => (m === 'N' ? 'n' : m.toLowerCase())).replace(/^./, (c) => c.toUpperCase());
+
+export function parseLabel(raw) {
+  let t = String(raw || '').replace(/[\r\n]+/g, ' ').replace(/[|_~`^"“”«»]/g, '').replace(/\s+/g, ' ').trim();
+  t = t.replace(/^[^A-Za-z0-9’']+/, '').replace(/[^A-Za-z0-9).!’'?]+$/, '');
+  let kind = null;
+  const m = t.match(/^(super\s*chaser|chaser|completer)\s*[:;.,-]?\s*(.*)$/i);
+  if (m) {
+    kind = /super/i.test(m[1]) ? 'superChaser' : /chaser/i.test(m[1]) ? 'chaser' : 'completer';
+    t = m[2].trim();
+  }
+  const letters = (t.match(/[A-Za-z]/g) || []).length;
+  return { name: letters >= 2 ? t : '', kind };
+}
+
+export function parseSectionTitle(raw) {
+  const t = String(raw || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const m = t.match(/series\s*[0-9IlO]+\s*[:;.]?\s*(.+)$/i);
+  const title = (m ? m[1] : t).replace(/[^A-Za-z0-9&'’ \-:]/g, '').trim();
+  return (title.match(/[A-Za-z]/g) || []).length >= 3 ? titleCase(title) : '';
+}
+
+/** Reads pin names, chaser labels and series titles from checklist boards (text recognition, optional). */
+export async function readNames() {
+  if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
+  const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
+  if (!todo.length) return;
+  const OCR = await import('./ocr.js');
+  if (!(await OCR.ready())) return;
+  const byBoard = new Map();
+  for (const s of todo) { if (!byBoard.has(s.boardId)) byBoard.set(s.boardId, []); byBoard.get(s.boardId).push(s); }
+  setStatus({ running: true, phase: 'Reading pin names', done: 0, total: todo.length });
+  for (const [boardId, slots] of byBoard) {
+    const board = state.boards.get(boardId);
+    if (!board || !board.blob) continue;
+    try {
+      const canvas = await V.blobToCanvas(board.blob, 2400);
+      const titles = [];
+      for (const r of board.sections || []) titles.push(parseSectionTitle(await OCR.read(canvas, r, { invert: true })));
+      const series = state.series.get(board.seriesKey);
+      if (series && titles.some(Boolean)) {
+        const themes = new Set(series.themes || []);
+        titles.filter(Boolean).forEach((t) => themes.add(t));
+        series.themes = [...themes];
+        await db.put('series', series);
+      }
+      for (const slot of slots) {
+        if (slot.edited) continue;
+        const { name, kind } = parseLabel(await OCR.read(canvas, slot.labelRect));
+        const changes = { autoNamed: true };
+        if (name) changes.name = name;
+        if (kind) changes.kind = kind;
+        if (titles[slot.section]) changes.group = titles[slot.section];
+        await db.updateSlot(slot, changes, { markEdited: false });
+        setStatus({ done: status.done + 1 });
+      }
+    } catch (e) {
+      console.warn('reading names failed', e);
+    }
   }
   setStatus({ running: false, phase: '' });
 }
@@ -211,13 +293,25 @@ export function matchesFor(index, query, limit = 5) {
   return scored.filter((m) => Number.isFinite(m.d)).sort((a, b) => a.d - b.d).slice(0, limit);
 }
 
-export function threshold() { return Number(localStorage.getItem('pv.threshold') || 0.58); }
-export function setThreshold(v) { localStorage.setItem('pv.threshold', String(v)); }
+export function threshold() { return Number(localStorage.getItem('pv.threshold2') || 0.55); }
+export function setThreshold(v) { localStorage.setItem('pv.threshold2', String(v)); }
 
-export function confidence(d) {
+/**
+ * Is the best match trustworthy? Either very close, or close AND clearly ahead of the next-best pin.
+ * (A real photo against printed artwork is never very close, but the right pin still stands out.)
+ */
+export function isConfident(matches) {
+  if (!matches || !matches.length) return false;
+  if (matches[0].picked) return true;
+  const t = threshold(), d = matches[0].d;
+  const gap = matches[1] ? matches[1].d - d : 1;
+  return d < t * 0.75 || (d < t && gap > 0.05);
+}
+
+export function confidence(d, matches = null) {
   const t = threshold();
   if (d < t * 0.75) return { label: 'Strong match', cls: 'green' };
-  if (d < t) return { label: 'Likely', cls: 'blue' };
+  if (matches ? isConfident(matches) && matches[0].d === d : d < t) return { label: 'Likely', cls: 'blue' };
   return { label: 'Unsure', cls: 'gray' };
 }
 
@@ -255,11 +349,11 @@ export async function importLayout(json) {
       const existing = byUid.get(ls.uid);
       if (existing) {
         const moved = !existing.rect || V.iou(existing.rect, rect) < 0.98;
-        await db.updateSlot(existing, { name: ls.name, group: ls.group || '', kind: ls.kind || 'regular', rect }, { markEdited: false });
+        await db.updateSlot(existing, { name: ls.name, group: ls.group || '', kind: ls.kind || 'regular', rect, autoNamed: true }, { markEdited: false });
         if (moved) for (const r of db.refsOf(existing.id)) if (!r.user) await db.remove('refs', r.id);
         updated++;
       } else {
-        await db.addSlot({ uid: ls.uid, seriesKey: board.seriesKey, boardId: board.id, rect, name: ls.name, group: ls.group || '', kind: ls.kind || 'regular' });
+        await db.addSlot({ uid: ls.uid, seriesKey: board.seriesKey, boardId: board.id, rect, name: ls.name, group: ls.group || '', kind: ls.kind || 'regular', autoNamed: true });
         added++;
       }
     }

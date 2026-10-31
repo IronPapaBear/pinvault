@@ -125,7 +125,8 @@ export function openLive({ onFreeze }) {
     for (const rect of rects) {
       const c = V.crop(work, rect, 0.04, 160);
       const q = V.describe(c);
-      const best = C.matchesFor(index, q, 1)[0];
+      const ms = C.matchesFor(index, q, 2);
+      const best = C.isConfident(ms) ? ms[0] : null;
       let tr = null, bestIoU = 0.25;
       for (const x of tracks) {
         if (claimed.has(x)) continue;
@@ -139,7 +140,7 @@ export function openLive({ onFreeze }) {
         tr = { rect, hits: 1, seen: now, votes: new Map(), crop: c };
         tracks.push(tr);
       }
-      if (best && best.d < t) tr.votes.set(best.slot.id, (tr.votes.get(best.slot.id) || 0) + 1);
+      if (best) tr.votes.set(best.slot.id, (tr.votes.get(best.slot.id) || 0) + 1);
       claimed.add(tr);
     }
     tracks = tracks.filter((x) => now - x.seen < 1300);
