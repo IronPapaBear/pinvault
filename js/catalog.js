@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js?v=202610310945';
-import { state } from './db.js?v=202610310945';
-import { SERIES } from './seed.js?v=202610310945';
-import * as V from './vision.js?v=202610310945';
+import * as db from './db.js?v=202610310955';
+import { state } from './db.js?v=202610310955';
+import { SERIES } from './seed.js?v=202610310955';
+import * as V from './vision.js?v=202610310955';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -167,7 +167,7 @@ export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
   const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
   if (!todo.length) return;
-  const OCR = await import('./ocr.js?v=202610310945');
+  const OCR = await import('./ocr.js?v=202610310955');
   if (!(await OCR.ready())) return;
   const byBoard = new Map();
   for (const s of todo) { if (!byBoard.has(s.boardId)) byBoard.set(s.boardId, []); byBoard.get(s.boardId).push(s); }
