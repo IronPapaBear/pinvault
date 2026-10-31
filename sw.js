@@ -1,5 +1,5 @@
 // Offline support: keeps the app (and the optional image AI) on the phone so it works in the parks.
-const VERSION = 'pinvault-v2';
+const VERSION = 'pinvault-202610310940';
 const APP = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/db.js', 'js/ui.js', 'js/seed.js', 'js/vision.js', 'js/catalog.js', 'js/annotator.js', 'js/ocr.js',
@@ -31,8 +31,9 @@ self.addEventListener('fetch', (e) => {
   }
   // The app itself: network first (so updates arrive), cached copy when offline.
   if (url.origin === location.origin) {
+    // Always ask the server whether there's a newer copy (cheap when nothing changed).
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(req, { cache: 'no-cache' }).then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
         return res;
       }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html'))));

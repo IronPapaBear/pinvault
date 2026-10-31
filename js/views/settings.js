@@ -1,10 +1,10 @@
 // Settings: matching, set photos, sharing layouts with friends, backups, install help.
-import * as db from '../db.js';
-import { state } from '../db.js';
-import * as C from '../catalog.js';
-import * as V from '../vision.js';
-import { h, icon, toast, downloadFile, fileButton, confirmSheet, spinner } from '../ui.js';
-import { catalogBanner } from './collection.js';
+import * as db from '../db.js?v=202610310940';
+import { state } from '../db.js?v=202610310940';
+import * as C from '../catalog.js?v=202610310940';
+import * as V from '../vision.js?v=202610310940';
+import { h, icon, toast, downloadFile, fileButton, confirmSheet, spinner } from '../ui.js?v=202610310940';
+import { catalogBanner } from './collection.js?v=202610310940';
 
 const rerender = () => window.dispatchEvent(new Event('hashchange'));
 const local = { persisted: null };

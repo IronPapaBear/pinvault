@@ -1,9 +1,9 @@
 // Collection tab: By Series list, one series, and the all-pins Gallery.
-import * as db from '../db.js';
-import { state } from '../db.js';
-import * as C from '../catalog.js';
-import { set, h, icon, segmented, progressBar, photoButton, isChase, kindBadge, toast, spinner } from '../ui.js';
-import { openPinSheet, openAddFromPhotoSheet } from './sheets.js';
+import * as db from '../db.js?v=202610310940';
+import { state } from '../db.js?v=202610310940';
+import * as C from '../catalog.js?v=202610310940';
+import { set, h, icon, segmented, progressBar, photoButton, isChase, kindBadge, toast, spinner } from '../ui.js?v=202610310940';
+import { openPinSheet, openAddFromPhotoSheet } from './sheets.js?v=202610310940';
 
 export function catalogBanner() {
   const s = C.status;

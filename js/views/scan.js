@@ -1,13 +1,13 @@
 // Add Pins and Trade Board tabs: photograph pins, see what they are, what you need.
-import * as db from '../db.js';
-import * as C from '../catalog.js';
-import * as V from '../vision.js';
-import { annotator } from '../annotator.js';
-import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js';
-import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js';
-import { catalogBanner } from './collection.js';
-import { openLive } from './live.js';
-import { state } from '../db.js';
+import * as db from '../db.js?v=202610310940';
+import * as C from '../catalog.js?v=202610310940';
+import * as V from '../vision.js?v=202610310940';
+import { annotator } from '../annotator.js?v=202610310940';
+import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js?v=202610310940';
+import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js?v=202610310940';
+import { catalogBanner } from './collection.js?v=202610310940';
+import { openLive } from './live.js?v=202610310940';
+import { state } from '../db.js?v=202610310940';
 
 let nextId = 1;
 const rerender = () => window.dispatchEvent(new Event('hashchange'));

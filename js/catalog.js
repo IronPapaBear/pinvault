@@ -1,8 +1,8 @@
 // Catalog setup: series, board photos, automatic pin boxes, shared layouts, backups and matching.
-import * as db from './db.js';
-import { state } from './db.js';
-import { SERIES } from './seed.js';
-import * as V from './vision.js';
+import * as db from './db.js?v=202610310940';
+import { state } from './db.js?v=202610310940';
+import { SERIES } from './seed.js?v=202610310940';
+import * as V from './vision.js?v=202610310940';
 
 // ---------- status shown in the UI ----------
 export const status = { running: false, phase: '', done: 0, total: 0, note: '' };
@@ -99,7 +99,7 @@ export async function autoCatalog() {
         const fresh = (r) => !existing.some((e) => e && V.iou(e, r) > 0.3);
         let n = existing.length;
         // Printed checklists (white background, names under the pins, coloured series bars).
-        const list = V.detectChecklist(canvas);
+        const list = V.detectChecklist ? V.detectChecklist(canvas) : null;
         if (list) {
           board.kind = 'checklist';
           board.sections = list.sections.map((x) => x.rect);
@@ -167,7 +167,7 @@ export async function readNames() {
   if (status.running || localStorage.getItem('pv.ocr') === 'off') return;
   const todo = db.allSlots().filter((s) => s.labelRect && !s.autoNamed && !s.edited);
   if (!todo.length) return;
-  const OCR = await import('./ocr.js');
+  const OCR = await import('./ocr.js?v=202610310940');
   if (!(await OCR.ready())) return;
   const byBoard = new Map();
   for (const s of todo) { if (!byBoard.has(s.boardId)) byBoard.set(s.boardId, []); byBoard.get(s.boardId).push(s); }
