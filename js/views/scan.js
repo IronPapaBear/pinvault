@@ -1,13 +1,13 @@
 // Add Pins and Trade Board tabs: photograph pins, see what they are, what you need.
-import * as db from '../db.js?v=202610310940';
-import * as C from '../catalog.js?v=202610310940';
-import * as V from '../vision.js?v=202610310940';
-import { annotator } from '../annotator.js?v=202610310940';
-import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js?v=202610310940';
-import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js?v=202610310940';
-import { catalogBanner } from './collection.js?v=202610310940';
-import { openLive } from './live.js?v=202610310940';
-import { state } from '../db.js?v=202610310940';
+import * as db from '../db.js?v=202610310943';
+import * as C from '../catalog.js?v=202610310943';
+import * as V from '../vision.js?v=202610310943';
+import { annotator } from '../annotator.js?v=202610310943';
+import { h, icon, photoButton, toast, spinner, kindBadge, isChase } from '../ui.js?v=202610310943';
+import { openSplitSheet, openBoardPicker, openMatchesSheet } from './sheets.js?v=202610310943';
+import { catalogBanner } from './collection.js?v=202610310943';
+import { openLive } from './live.js?v=202610310943';
+import { state } from '../db.js?v=202610310943';
 
 let nextId = 1;
 const rerender = () => window.dispatchEvent(new Event('hashchange'));
@@ -152,6 +152,17 @@ export function addView() {
     s.pins.length ? h('p', { class: 'small muted' }, 'Missed a pin? Tap Box a pin, then tap the pin (or drag around it). A box around several pins? Tap the box to split it.') : null);
 }
 
+/** The closest catalog pin, offered for a one-tap "yes, that's it". */
+function guessRow(p) {
+  const g = p.matches[0];
+  const ref = db.thumbRef(g.slot);
+  return h('div', { class: 'guess', onclick: (e) => e.stopPropagation() },
+    ref ? h('div', { class: 'thumb sm' }, h('img', { src: db.blobURL(ref.blob) })) : null,
+    h('div', { class: 'grow small' }, h('div', { class: 'muted' }, 'Best guess'),
+      h('div', { class: 'bold' }, g.slot.name), h('div', { class: 'muted' }, C.shortName(state.series.get(g.slot.seriesKey)))),
+    h('button', { class: 'btn small', onclick: () => choose(p, g.slot) }, 'That\'s it'));
+}
+
 function addRow(s, p, i) {
   const slot = chosenSlot(p);
   const m = p.chosen != null ? p.matches[p.chosen] : null;
@@ -168,6 +179,7 @@ function addRow(s, p, i) {
         h('span', { class: 'small txt-accent' }, 'Other matches…'),
       ] : [
         h('div', { class: 'bold muted' }, 'No confident match'),
+        p.matches.length ? guessRow(p) : null,
         h('button', { class: 'btn small primary', onclick: (e) => { e.stopPropagation(); findOnBoard(p); } }, icon('hand'), h('span', {}, 'Find on a board')),
       ]),
     h('div', { class: 'stack tight center' },
